@@ -84,7 +84,7 @@ def main(_):
     agent = SACLearner.create(FLAGS.seed, env.observation_space,
                               env.action_space, **kwargs)
 
-    chkpt_dir = 'saved/checkpoints'
+    chkpt_dir = os.path.join(os.getcwd(), 'saved/checkpoints')
     os.makedirs(chkpt_dir, exist_ok=True)
     buffer_dir = 'saved/buffers'
 

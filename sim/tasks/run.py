@@ -50,14 +50,14 @@ class Run(composer.Task):
         self._robot = robot
         self._floor.add_free_entity(self._robot)
 
-        observables = (self._robot.observables.proprioception +
-                       self._robot.observables.kinematic_sensors +
-                       [self._robot.observables.prev_action])
+        observables = (self._robot.observables.proprioception +  ## Mateo: Joint positions + joint vels
+                       self._robot.observables.kinematic_sensors +  ## Mateo: sensors_gyro, sensors_velocimeter, sensors_framequat
+                       [self._robot.observables.prev_action])  ## Mateo: prev_action
         for observable in observables:
             observable.enabled = True
 
         if not add_velocity_to_observations:
-            self._robot.observables.sensors_velocimeter.enabled = False
+            self._robot.observables.sensors_velocimeter.enabled = False  ## Mateo: Not sure why this is here or how it's different from sensors_velocimeter
 
         if hasattr(self._floor, '_top_camera'):
             self._floor._top_camera.remove()
