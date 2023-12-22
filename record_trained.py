@@ -16,6 +16,10 @@ from rl.data import ReplayBuffer
 from rl.evaluation import evaluate, evaluate_and_observe
 from rl.wrappers import wrap_gym
 
+import mujoco
+from mujoco import viewer
+
+
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('env_name', 'A1Run-v0', 'Environment name.')
@@ -46,6 +50,7 @@ config_flags.DEFINE_config_file(
 
 def main(_):
 
+    # import pdb;pdb.set_trace()
     from env_utils import make_mujoco_env
     # env = make_mujoco_env(
     #     FLAGS.env_name,
