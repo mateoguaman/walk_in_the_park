@@ -13,7 +13,7 @@ from flax.training import checkpoints
 from ml_collections import config_flags
 from rl.agents import SACLearner
 from rl.data import ReplayBuffer
-from rl.evaluation import evaluate
+from rl.evaluation import evaluate, evaluate_and_observe
 from rl.wrappers import wrap_gym
 
 FLAGS = flags.FLAGS
@@ -24,7 +24,7 @@ flags.DEFINE_integer('seed', 42, 'Random seed.')
 flags.DEFINE_integer('eval_episodes', 1,
                      'Number of episodes used for evaluation.')
 flags.DEFINE_integer('log_interval', 1000, 'Logging interval.')
-flags.DEFINE_integer('eval_interval', 1000, 'Eval interval.')
+flags.DEFINE_integer('eval_interval', 1, 'Eval interval.')
 flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
 flags.DEFINE_integer('max_steps', int(1e6), 'Number of training steps.')
 flags.DEFINE_integer('start_training', int(1e4),
@@ -47,19 +47,19 @@ config_flags.DEFINE_config_file(
 def main(_):
 
     from env_utils import make_mujoco_env
-    env = make_mujoco_env(
-        FLAGS.env_name,
-        control_frequency=FLAGS.control_frequency,
-        action_filter_high_cut=FLAGS.action_filter_high_cut,
-        action_history=FLAGS.action_history)
+    # env = make_mujoco_env(
+    #     FLAGS.env_name,
+    #     control_frequency=FLAGS.control_frequency,
+    #     action_filter_high_cut=FLAGS.action_filter_high_cut,
+    #     action_history=FLAGS.action_history)
 
-    env = wrap_gym(env, rescale_actions=True)
-    env = gym.wrappers.RecordEpisodeStatistics(env, deque_size=1)
-    env = gym.wrappers.RecordVideo(
-        env,
-        f'videos/train_{FLAGS.action_filter_high_cut}',
-        episode_trigger=lambda x: True)
-    env.seed(FLAGS.seed)
+    # env = wrap_gym(env, rescale_actions=True)
+    # env = gym.wrappers.RecordEpisodeStatistics(env, deque_size=1)
+    # env = gym.wrappers.RecordVideo(
+    #     env,
+    #     f'videos/train_{FLAGS.action_filter_high_cut}',
+    #     episode_trigger=lambda x: True)
+    # env.seed(FLAGS.seed)
 
     eval_env = make_mujoco_env(
         FLAGS.env_name,
@@ -74,24 +74,50 @@ def main(_):
     eval_env.seed(FLAGS.seed + 42)
 
     kwargs = dict(FLAGS.config)
-    agent = SACLearner.create(FLAGS.seed, env.observation_space,
-                              env.action_space, **kwargs)
+    agent = SACLearner.create(FLAGS.seed, eval_env.observation_space,
+                              eval_env.action_space, **kwargs)
 
     chkpt_dir = os.path.join(os.getcwd(), 'saved/checkpoints')
+    buffer_dir = os.path.join(os.getcwd(), 'trained/checkpoint')
+    os.makedirs(buffer_dir, exist_ok=True)
     last_checkpoint = checkpoints.latest_checkpoint(chkpt_dir)
 
     start_i = int(last_checkpoint.split('_')[-1])
 
     agent = checkpoints.restore_checkpoint(last_checkpoint, agent)
 
-    observation, done = env.reset(), False
+    ## Initialize new buffer to record what happens
+    replay_buffer = ReplayBuffer(eval_env.observation_space, eval_env.action_space,
+                                     FLAGS.max_steps)
+    replay_buffer.seed(FLAGS.seed + 42)
+
+    observation, done = eval_env.reset(), False
     for i in tqdm.tqdm(range(start_i, FLAGS.max_steps),
                        smoothing=0.1,
                        disable=not FLAGS.tqdm):
 
-        eval_info = evaluate(agent,
+        next_observation, action, reward, done, info, eval_info = evaluate_and_observe(agent,
                                 eval_env,
                                 num_episodes=FLAGS.eval_episodes)
+
+        if not done or 'TimeLimit.truncated' in info:
+            mask = 1.0
+        else:
+            mask = 0.0
+
+        replay_buffer.insert(
+            dict(observations=observation,
+                 actions=action,
+                 rewards=reward,
+                 masks=mask,
+                 dones=done,
+                 next_observations=next_observation))
+        observation = next_observation
+
+        if i % FLAGS.eval_interval == 0:
+            import pdb;pdb.set_trace()
+            with open(os.path.join(buffer_dir, f'buffer_{i+1}'), 'wb') as f:
+                pickle.dump(replay_buffer, f)
 
 
 
