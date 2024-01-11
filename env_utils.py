@@ -41,24 +41,6 @@ class ClipAction(gym.ActionWrapper):
 
     def action(self, action):
         return np.clip(action, self.action_space.low, self.action_space.high)
-    
-class ExposedEnvironment(composer.Environment):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Store the mjmodel and mjdata internally
-        self._dmc_mjmodel = self.physics.model
-        import pdb;pdb.set_trace()
-        self._mjmodel_xml = self._dmc_mjmodel.to_xml_string()
-        self._mjmodel = mujoco.MjModel.from_xml_string(self._mjmodel_xml)
-        self._mjdata =  mujoco.MjData(self._mjmodel)
-
-    # Add methods to access the mjmodel and mjdata
-    def get_mjmodel(self):
-        return self._mjmodel
-
-    def get_mjdata(self):
-        return self._mjdata
 
 def make_env(task_name: str,
              control_frequency: int = 33,
@@ -74,20 +56,7 @@ def make_env(task_name: str,
     else:
         raise NotImplemented
 
-    # env = composer.Environment(task, strip_singleton_obs_buffer_dim=True)
-    import pdb;pdb.set_trace()
-    env = ExposedEnvironment(task, strip_singleton_obs_buffer_dim=True)
-    # Start the viewer loop
-    model = env.get_mjmodel()
-    data = env.get_mjdata()
-    viewer.launch_passive(model, data)
-
-    while True:
-        viewer.sync()
-        # env.viewer.render()
-        print("viewing")
-        time.sleep(1.0 / control_frequency)
-    viewer.close()
+    env = composer.Environment(task, strip_singleton_obs_buffer_dim=True)
 
     env = DMCGYM(env)
     env = FlattenObservation(env)

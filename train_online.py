@@ -16,6 +16,11 @@ from rl.data import ReplayBuffer
 from rl.evaluation import evaluate
 from rl.wrappers import wrap_gym
 
+## DELETE AFTER DEBUGGING
+# from jax import config
+# config.update("jax_disable_jit", True)
+#####
+
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('env_name', 'A1Run-v0', 'Environment name.')
