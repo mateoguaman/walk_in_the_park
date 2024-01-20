@@ -56,7 +56,12 @@ class Dataset(object):
         return self._np_random
 
     def seed(self, seed: Optional[int] = None) -> list:
-        self._np_random, self._seed = seeding.np_random(seed)
+        seed_seq = np.random.SeedSequence(seed)
+        np_seed = seed_seq.entropy
+        rng = np.random.default_rng(seed_seq)
+        self._np_random, self._seed = rng, np_seed
+        # rng = RandomNumberGenerator(np.random.PCG64(seed_seq))
+        # self._np_random, self._seed = seeding.np_random(seed)
         return [self._seed]
 
     def __len__(self) -> int:
