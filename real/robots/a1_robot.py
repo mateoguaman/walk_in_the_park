@@ -272,6 +272,12 @@ class A1Robot(a1.A1):
 
     def GetFootContacts(self):
         return np.array(self._raw_state.footForce) > 20
+    
+    def GetFootForces(self):
+        return np.array(self._raw_state.footForce)
+    
+    def GetFootForcesNormalized(self):
+        return np.array(self._raw_state.footForce) / 50.
 
     def GetTimeSinceReset(self):
         return time.time() - self._last_reset_time

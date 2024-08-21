@@ -24,6 +24,7 @@ flags.DEFINE_integer('seed', 42, 'Random seed.')
 flags.DEFINE_integer('eval_episodes', 1,
                      'Number of episodes used for evaluation.')
 flags.DEFINE_integer('log_interval', 1000, 'Logging interval.')
+flags.DEFINE_integer('log_video_interval', 5000, 'Logging video interval.')
 flags.DEFINE_integer('eval_interval', 1000, 'Eval interval.')
 flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
 flags.DEFINE_integer('max_steps', int(1e6), 'Number of training steps.')
@@ -34,6 +35,7 @@ flags.DEFINE_boolean('wandb', True, 'Log wandb.')
 flags.DEFINE_boolean('save_video', False, 'Save videos during evaluation.')
 flags.DEFINE_float('action_filter_high_cut', None, 'Action filter high cut.')
 flags.DEFINE_integer('action_history', 1, 'Action history.')
+flags.DEFINE_float('limit_action_range', 1., 'Limit action range in (0, 1]')
 flags.DEFINE_integer('control_frequency', 20, 'Control frequency.')
 flags.DEFINE_integer('utd_ratio', 1, 'Update to data ratio.')
 flags.DEFINE_boolean('real_robot', False, 'Use real robot.')
@@ -47,19 +49,24 @@ config_flags.DEFINE_config_file(
 def main(_):
     wandb.init(project='a1')
     wandb.config.update(FLAGS)
-
+    
+    init_qpos = np.asarray([0.05, 0.9, -1.8] * 4) #np.asarray([0.05, 0.7, -1.4] * 4)
+    
     if FLAGS.real_robot:
         from real.envs.a1_env import A1Real
-        env = A1Real(zero_action=np.asarray([0.05, 0.9, -1.8] * 4))
+        env = A1Real(zero_action=init_qpos,
+                     limit_action_range=FLAGS.limit_action_range)
     else:
         from env_utils import make_mujoco_env
         env = make_mujoco_env(
             FLAGS.env_name,
             control_frequency=FLAGS.control_frequency,
             action_filter_high_cut=FLAGS.action_filter_high_cut,
-            action_history=FLAGS.action_history)
+            action_history=FLAGS.action_history,
+            limit_action_range=FLAGS.limit_action_range,
+            init_qpos=init_qpos)
 
-    env = wrap_gym(env, rescale_actions=True)
+    env = wrap_gym(env, rescale_actions=True, init_qpos=init_qpos, limit_action_range=FLAGS.limit_action_range)
     env = gym.wrappers.RecordEpisodeStatistics(env, deque_size=1)
     env = gym.wrappers.RecordVideo(
         env,
@@ -72,8 +79,10 @@ def main(_):
             FLAGS.env_name,
             control_frequency=FLAGS.control_frequency,
             action_filter_high_cut=FLAGS.action_filter_high_cut,
-            action_history=FLAGS.action_history)
-        eval_env = wrap_gym(eval_env, rescale_actions=True)
+            action_history=FLAGS.action_history,
+            limit_action_range=FLAGS.limit_action_range,
+            init_qpos=init_qpos)
+        eval_env = wrap_gym(eval_env, rescale_actions=True, init_qpos=init_qpos, limit_action_range=FLAGS.limit_action_range)
         eval_env = gym.wrappers.RecordVideo(
             eval_env,
             f'videos/eval_{FLAGS.action_filter_high_cut}',
@@ -84,9 +93,9 @@ def main(_):
     agent = SACLearner.create(FLAGS.seed, env.observation_space,
                               env.action_space, **kwargs)
 
-    chkpt_dir = 'saved/checkpoints'
+    chkpt_dir = os.path.join(os.getcwd(), 'saved/checkpoints') #'saved/checkpoints'
     os.makedirs(chkpt_dir, exist_ok=True)
-    buffer_dir = 'saved/buffers'
+    buffer_dir = os.path.join(os.getcwd(), 'saved/buffers') #'saved/buffers'
 
     last_checkpoint = checkpoints.latest_checkpoint(chkpt_dir)
 
@@ -104,6 +113,10 @@ def main(_):
             replay_buffer = pickle.load(f)
 
     observation, done = env.reset(), False
+    if not FLAGS.real_robot:
+        episode_frames = [env.render()]
+    log_video_after = 0  ## Will log video if i >= log_video_after. If true, will update to i + log_interval.
+
     for i in tqdm.tqdm(range(start_i, FLAGS.max_steps),
                        smoothing=0.1,
                        disable=not FLAGS.tqdm):
@@ -112,6 +125,8 @@ def main(_):
         else:
             action, agent = agent.sample_actions(observation)
         next_observation, reward, done, info = env.step(action)
+        if not FLAGS.real_robot:
+            episode_frames.append(env.render())
 
         if not done or 'TimeLimit.truncated' in info:
             mask = 1.0
@@ -133,6 +148,15 @@ def main(_):
                 decode = {'r': 'return', 'l': 'length', 't': 'time'}
                 wandb.log({f'training/{decode[k]}': v}, step=i)
 
+            if i >= log_video_after and not FLAGS.real_robot:
+                # print(f"Logging video! Current log_video_after: {log_video_after}. Current i: {i}. Next log_video_after: {i + FLAGS.log_interval}")
+                episode_frames = np.stack(episode_frames, axis=0).transpose(0, 3, 1, 2)
+                wandb.log({"training/video": wandb.Video(episode_frames, fps = FLAGS.control_frequency)}, step=i)
+                log_video_after = i + FLAGS.log_interval
+
+            if not FLAGS.real_robot:
+                episode_frames = [env.render()]
+
         if i >= FLAGS.start_training:
             batch = replay_buffer.sample(FLAGS.batch_size * FLAGS.utd_ratio)
             agent, update_info = agent.update(batch, FLAGS.utd_ratio)
@@ -147,7 +171,11 @@ def main(_):
                                      eval_env,
                                      num_episodes=FLAGS.eval_episodes)
                 for k, v in eval_info.items():
-                    wandb.log({f'evaluation/{k}': v}, step=i)
+                    if k == "frames" and not FLAGS.real_robot:
+                        eval_episode_frames = np.stack(v, axis=0).transpose(0, 3, 1, 2)
+                        wandb.log({"evaluation/video": wandb.Video(eval_episode_frames, fps = FLAGS.control_frequency)}, step=i)
+                    else:
+                        wandb.log({f'evaluation/{k}': v}, step=i)
 
             checkpoints.save_checkpoint(chkpt_dir,
                                         agent,
@@ -163,6 +191,11 @@ def main(_):
             os.makedirs(buffer_dir, exist_ok=True)
             with open(os.path.join(buffer_dir, f'buffer_{i+1}'), 'wb') as f:
                 pickle.dump(replay_buffer, f)
+    if len(episode_frames) > 0 and not FLAGS.real_robot:
+        episode_frames = np.stack(episode_frames, axis=0).transpose(0, 3, 1, 2)
+        wandb.log({"training/video": wandb.Video(episode_frames, fps = FLAGS.control_frequency)}, step=i)
+    wandb.finish()
+
 
 
 if __name__ == '__main__':

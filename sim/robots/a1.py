@@ -40,23 +40,66 @@ class A1Observables(base.WalkerObservables):
             self.sensors_gyro, self.sensors_velocimeter, self.sensors_framequat
         ] + self._collect_from_attachments('kinematic_sensors'))
 
+    
+    @composer.observable
+    def imu(self):
+        def imu_func(physics):
+            # import ipdb;ipdb.set_trace()
+            quat = self.sensors_framequat(physics)
+            roll, pitch, yaw = quat_to_euler(quat)
+            wx, wy, wz = self.sensors_gyro(physics)
+            imu = np.array([roll, pitch, wx, wy])
+            return imu
+
+        return observable.Generic(imu_func)
+    
+    @composer.observable
+    def torques(self):
+        return observable.Generic(
+            lambda physics: self._entity.get_torques(physics)
+        )
+
+    @composer.observable
+    def foot_forces_normalized(self):
+        return observable.Generic(
+            lambda physics: self._entity.get_foot_forces_normalized(physics)
+        )
+
+    @property
+    def aprl_obs(self):
+        joints_pos = self.joints_pos
+        joints_vel = self.joints_vel
+        imu = self.imu
+        velocimeter = self.sensors_velocimeter
+        torques = self.torques
+        foot_forces_normalized = self.foot_forces_normalized
+        last_actions = self.prev_action
+
+        return ([
+            joints_pos, joints_vel, imu, velocimeter, torques, foot_forces_normalized, last_actions
+        ])
+
 
 class A1(base.Walker):
-    _INIT_QPOS = np.asarray([0.05, 0.7, -1.4] * 4)
-    _QPOS_OFFSET = np.asarray([0.2, 0.4, 0.4] * 4)
+    # _INIT_QPOS = np.asarray([0.05, 0.7, -1.4] * 4)
+    # _QPOS_OFFSET = np.asarray([0.2, 0.4, 0.4] * 4)
     # _INIT_QPOS = np.asarray([-0.1, 0.5, -1.4] * 4)
     """A composer entity representing a Jaco arm."""
 
     def _build(self,
                name: Optional[str] = None,
                action_history: int = 1,
-               learn_kd: bool = False):
+               learn_kd: bool = False,
+               limit_action_range: float = 1.0,
+               init_qpos: np.ndarray = np.asarray([0.05, 0.7, -1.4] * 4),
+               ):
         """Initializes the JacoArm.
 
     Args:
       name: String, the name of this robot. Used as a prefix in the MJCF name
         name attributes.
     """
+        self._INIT_QPOS = init_qpos
         self._mjcf_root = mjcf.from_path(_A1_XML_PATH)
         if name:
             self._mjcf_root.model = name
@@ -78,6 +121,8 @@ class A1(base.Walker):
             self.kd = None
         else:
             self.kd = 10
+
+        self.limit_action_range = limit_action_range
 
         self._prev_actions = deque(maxlen=action_history)
         self.initialize_episode_mjcf(None)
@@ -171,6 +216,18 @@ class A1(base.Walker):
     @property
     def prev_action(self):
         return np.concatenate(self._prev_actions)
+    
+    @property
+    def joint_qpos_init(self) -> np.ndarray:
+        return self._INIT_QPOS
+    
+    @property
+    def action_qpos_mins(self) -> np.ndarray:
+        return (self.action_spec.minimum - self.joint_qpos_init) * self.limit_action_range + self.joint_qpos_init
+    
+    @property
+    def action_qpos_maxs(self) -> np.ndarray:
+        return (self.action_spec.maximum - self.joint_qpos_init) * self.limit_action_range + self.joint_qpos_init
 
     def get_roll_pitch_yaw(self, physics):
         quat = physics.bind(self.mjcf_model.sensor.framequat).sensordata
@@ -179,3 +236,19 @@ class A1(base.Walker):
     def get_velocity(self, physics):
         velocimeter = physics.bind(self.mjcf_model.sensor.velocimeter)
         return velocimeter.sensordata
+    
+    def get_foot_forces(self, physics) -> np.ndarray:
+        foot_forces = physics.bind(self.mjcf_model.sensor.touch).sensordata.copy()
+        return foot_forces
+
+    def get_foot_forces_normalized(self, physics) -> np.ndarray:
+        foot_forces = self.get_foot_forces(physics).copy() / 50.0
+        return foot_forces
+    
+    def get_foot_contacts(self, physics) -> np.ndarray:
+        self.foot_contact_threshold = np.array([10, 10, 10, 10])
+        return self.get_foot_forces(physics).copy() >= self.foot_contact_threshold
+    
+    def get_torques(self, physics):
+        torques = physics.bind(self.actuators).ctrl.copy()
+        return torques

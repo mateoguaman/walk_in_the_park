@@ -8,6 +8,9 @@ from dm_control.utils import rewards
 
 from sim.arenas import HField
 from sim.tasks.utils import _find_non_contacting_height
+from sim.tasks.aprl_reward import APRLReward
+
+import transforms3d as tr3d
 
 DEFAULT_CONTROL_TIMESTEP = 0.03
 DEFAULT_PHYSICS_TIMESTEP = 0.001
@@ -50,14 +53,18 @@ class Run(composer.Task):
         self._robot = robot
         self._floor.add_free_entity(self._robot)
 
-        observables = (self._robot.observables.proprioception +
-                       self._robot.observables.kinematic_sensors +
-                       [self._robot.observables.prev_action])
+        # observables = (self._robot.observables.proprioception +
+        #                self._robot.observables.kinematic_sensors +
+        #                [self._robot.observables.prev_action])
+        # for observable in observables:
+        #     observable.enabled = True
+
+        # if not add_velocity_to_observations:
+        #     self._robot.observables.sensors_velocimeter.enabled = False
+
+        observables = self._robot.observables.aprl_obs
         for observable in observables:
             observable.enabled = True
-
-        if not add_velocity_to_observations:
-            self._robot.observables.sensors_velocimeter.enabled = False
 
         if hasattr(self._floor, '_top_camera'):
             self._floor._top_camera.remove()
@@ -68,6 +75,7 @@ class Run(composer.Task):
                                              mode="trackcom",
                                              fovy=60.0)
 
+        self.control_timestep = control_timestep
         self.set_timesteps(physics_timestep=physics_timestep,
                            control_timestep=control_timestep)
 
@@ -75,17 +83,87 @@ class Run(composer.Task):
 
         self._move_speed = 0.5
 
-    def get_reward(self, physics):
+        self.aprl_reward = APRLReward()
+
+        # Initialize storage for last values
+        self.last_dof_pos = self._robot._INIT_QPOS
+        self.last_torques = np.zeros(12)
+        self.last_forces = np.array([0.0, 0.0, 0.0, 0.0])
+        self.last_contacts = np.array([False, False, False, False])
+
+    def update_current_values(self, physics):
+        # print("Inside update_current_values")
         xmat = physics.bind(self._robot.root_body).xmat.reshape(3, 3)
-        _, pitch, _ = tr.rmat_to_euler(xmat, 'XYZ')
+        roll, pitch, yaw = tr.rmat_to_euler(xmat, 'XYZ')
         velocimeter = physics.bind(self._robot.mjcf_model.sensor.velocimeter)
-
         gyro = physics.bind(self._robot.mjcf_model.sensor.gyro)
+        framequat = physics.bind(self._robot.mjcf_model.sensor.framequat).sensordata.copy()
+        up = tr3d.quaternions.quat2mat(framequat)[-1,-1]
 
-        return get_run_reward(x_velocity=velocimeter.sensordata[0],
-                              move_speed=self._move_speed,
-                              cos_pitch=np.cos(pitch),
-                              dyaw=gyro.sensordata[-1])
+        self.aprl_reward.base_ang_vel = gyro.sensordata.copy()
+        self.aprl_reward.base_lin_vel = velocimeter.sensordata.copy()
+        self.aprl_reward.roll = roll
+        self.aprl_reward.pitch = pitch
+        self.aprl_reward.yaw = yaw
+        self.aprl_reward.up = up
+        self.aprl_reward.default_dof_pos = self._robot._INIT_QPOS
+        self.aprl_reward.last_dof_pos = self.last_dof_pos
+        self.aprl_reward.dof_pos = physics.bind(self._robot.joints).qpos.copy()
+        self.aprl_reward.dof_vel = physics.bind(self._robot.joints).qvel.copy()
+        self.aprl_reward.torques = physics.bind(self._robot.actuators).ctrl.copy()
+        self.aprl_reward.last_torques = self.last_torques
+        self.aprl_reward.forces = self._robot.get_foot_forces_normalized(physics)
+        self.aprl_reward.last_forces = self.last_forces
+        self.aprl_reward.contacts = self._robot.get_foot_contacts(physics)
+        self.aprl_reward.last_contacts = self.last_contacts
+        self.aprl_reward.dt = self.control_timestep
+
+    def get_reward(self, physics):
+        # print("Inside reward")
+        # self.update_current_values(physics)
+        # xmat = physics.bind(self._robot.root_body).xmat.reshape(3, 3)
+        # roll, pitch, yaw = tr.rmat_to_euler(xmat, 'XYZ')
+        # velocimeter = physics.bind(self._robot.mjcf_model.sensor.velocimeter)
+
+        # gyro = physics.bind(self._robot.mjcf_model.sensor.gyro)
+        # framequat = physics.bind(self._robot.mjcf_model.sensor.framequat).sensordata.copy()
+        # up = tr3d.quaternions.quat2mat(framequat)[-1,-1]
+
+        # import ipdb;ipdb.set_trace()
+        # self.aprl_reward.base_ang_vel = gyro.sensordata.copy()
+        # self.aprl_reward.base_lin_vel = velocimeter.sensordata.copy()  
+        # self.aprl_reward.roll = roll  ## TODO: Make sure it's local frame
+        # self.aprl_reward.pitch = pitch
+        # self.aprl_reward.yaw = yaw
+        # self.aprl_reward.up = up  
+        # self.aprl_reward.default_dof_pos = self._robot._INIT_QPOS 
+        # self.aprl_reward.last_dof_pos = self.last_dof_pos
+        # self.aprl_reward.dof_pos = physics.bind(self._robot.joints).qpos.copy() 
+        # self.aprl_reward.dof_vel = physics.bind(self._robot.joints).qvel.copy() 
+        # self.aprl_reward.torques = physics.bind(self._robot.actuators).ctrl.copy() 
+        # self.aprl_reward.last_torques = self.last_torques 
+        # self.aprl_reward.forces = self._robot.get_foot_forces(physics) 
+        # self.aprl_reward.last_forces = self.last_forces 
+        # self.aprl_reward.contacts = self._robot.get_foot_contacts(physics) 
+        # self.aprl_reward.last_contacts = self.last_contacts 
+        # self.aprl_reward.dt = self.control_timestep  
+
+        # print(f"Last torques: {self.aprl_reward.last_torques}")
+        # print(f"Current torques: {self.aprl_reward.torques}")
+        # print(f"Last forces: {self.aprl_reward.last_forces}")
+        # print(f"Current forces: {self.aprl_reward.forces}")
+        # print(f"Last contacts: {self.aprl_reward.last_contacts}")
+        # print(f"Current contacts: {self.aprl_reward.contacts}")
+
+        aprl_reward = self.aprl_reward.get_reward()
+
+        return aprl_reward
+
+        # return get_run_reward(x_velocity=velocimeter.sensordata[0],
+        #                       move_speed=self._move_speed,
+        #                       cos_pitch=np.cos(pitch),
+        #                       dyaw=gyro.sensordata[-1])
+
 
     def initialize_episode_mjcf(self, random_state):
         super().initialize_episode_mjcf(random_state)
@@ -112,9 +190,20 @@ class Run(composer.Task):
         _find_non_contacting_height(physics,
                                     self._robot,
                                     qpos=self._robot._INIT_QPOS)
+        
+        # # Initialize last values to zero or appropriate initial states
+        # self.last_dof_pos = self._robot._INIT_QPOS
+        # self.last_torques = np.zeros(12)
+        # self.last_forces = np.array([0.0, 0.0, 0.0, 0.0])
+        # self.last_contacts = np.array([False, False, False, False])
+
+        self.update_last_values(physics)
+        self.update_current_values(physics)
 
     def before_step(self, physics, action, random_state):
-        pass
+        # print("Inside before_step")
+        self.update_last_values(physics)
+        # pass
 
     def before_substep(self, physics, action, random_state):
         self._robot.apply_action(physics, action, random_state)
@@ -122,7 +211,16 @@ class Run(composer.Task):
     def action_spec(self, physics):
         return self._robot.action_spec
 
+    def update_last_values(self, physics):
+        # print("Inside update_last_values")
+        # import ipdb;ipdb.set_trace()
+        self.last_joint_positions = physics.bind(self._robot.joints).qpos.copy()
+        self.last_torques = physics.bind(self._robot.actuators).ctrl.copy()
+        self.last_forces = self._robot.get_foot_forces_normalized(physics)
+        self.last_contacts = self._robot.get_foot_contacts(physics)
+
     def after_step(self, physics, random_state):
+        # print("Inside after_step")
         self._failure_termination = False
 
         if self._terminate_pitch_roll is not None:
@@ -131,6 +229,8 @@ class Run(composer.Task):
             if (np.abs(roll) > self._terminate_pitch_roll
                     or np.abs(pitch) > self._terminate_pitch_roll):
                 self._failure_termination = True
+
+        self.update_current_values(physics)
 
     def should_terminate_episode(self, physics):
         return self._failure_termination

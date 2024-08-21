@@ -5,6 +5,13 @@
     <default>
         <geom contype="1" conaffinity="0" friction="0.6 0.3 0.3" rgba="0.5 0.6 0.7 1" margin="0.001" condim="6" solref="0.02 1" solimp="0.8 0.9 0.01" group="4"/>
         <joint damping="0.01" armature="0.01" frictionloss="0.2" solreflimit="0.01 1" solimplimit="0.9 0.99 0.01" />
+        <default class="foot">
+          <geom type="sphere" size="0.02" pos="0 0 -0.2" priority="1" solimp="0.015 1 0.02" condim="6"
+            friction="0.8 0.02 0.01"/>
+        </default>
+        <default class="foot_site">
+          <site type="sphere" size="0.02" pos="0 0 -0.2" rgba="0.5 0.5 0.5 0.0" />
+        </default>
     </default>
 
     <asset>
@@ -41,6 +48,8 @@
                         <geom size="0.1 0.008 0.008" pos="0 0 -0.1" quat="0.707107 0 0.707107 0" type="box" rgba="0 0 0 0" />
                         <geom size="0.01" pos="0 0 -0.2" contype="0" conaffinity="0" group="1" rgba="0 0 0 1" />
                         <geom size="0.02" pos="0 0 -0.2" rgba="0 0 0 1" />
+                        <geom class="foot"/>
+                        <site name="FR_foot_site" class="foot_site"/>
                     </body>
                 </body>
             </body>
@@ -61,6 +70,8 @@
                         <geom size="0.1 0.008 0.008" pos="0 0 -0.1" quat="0.707107 0 0.707107 0" type="box" rgba="0 0 0 0" />
                         <geom size="0.01" pos="0 0 -0.2" contype="0" conaffinity="0" group="1" rgba="0 0 0 1" />
                         <geom size="0.02" pos="0 0 -0.2" rgba="0 0 0 1" />
+                        <geom class="foot"/>
+                        <site name="FL_foot_site" class="foot_site"/>
                     </body>
                 </body>
             </body>
@@ -81,6 +92,8 @@
                         <geom size="0.1 0.008 0.008" pos="0 0 -0.1" quat="0.707107 0 0.707107 0" type="box" rgba="0 0 0 0" />
                         <geom size="0.01" pos="0 0 -0.2" contype="0" conaffinity="0" group="1" rgba="0 0 0 1" />
                         <geom size="0.02" pos="0 0 -0.2" rgba="0 0 0 1" />
+                        <geom class="foot"/>
+                        <site name="RR_foot_site" class="foot_site"/>
                     </body>
                 </body>
             </body>
@@ -101,6 +114,8 @@
                         <geom size="0.1 0.008 0.008" pos="0 0 -0.1" quat="0.707107 0 0.707107 0" type="box" rgba="0 0 0 0" />
                         <geom size="0.01" pos="0 0 -0.2" contype="0" conaffinity="0" group="1" rgba="0 0 0 1" />
                         <geom size="0.02" pos="0 0 -0.2" rgba="0 0 0 1" />
+                        <geom class="foot"/>
+                        <site name="RL_foot_site" class="foot_site"/>
                     </body>
                 </body>
             </body>
@@ -127,5 +142,9 @@
         <gyro name="sensor_gyro" site="imu"/>
         <velocimeter name="velocimeter" site="imu"/>
         <framequat name="framequat" objtype='site' objname="imu"/>
+        <touch name="FR_foot_touch" site="FR_foot_site" />
+        <touch name="FL_foot_touch" site="FL_foot_site" />
+        <touch name="RR_foot_touch" site="RR_foot_site" />
+        <touch name="RL_foot_touch" site="RL_foot_site" />
     </sensor>
 </mujoco>

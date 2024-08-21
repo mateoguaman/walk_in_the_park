@@ -9,6 +9,7 @@ from gym.wrappers import FlattenObservation
 
 import sim
 from filter import ActionFilterWrapper
+from rl.wrappers.action_rescale import RescaleActionAsymmetric
 from sim.robots import A1
 from sim.tasks import Run
 
@@ -44,8 +45,12 @@ class ClipAction(gym.ActionWrapper):
 def make_env(task_name: str,
              control_frequency: int = 33,
              randomize_ground: bool = True,
-             action_history: int = 1):
-    robot = A1(action_history=action_history)
+             action_history: int = 1,
+             limit_action_range: float = 1.0,
+             init_qpos: np.ndarray = np.asarray([0.05, 0.7, -1.4] * 4)):
+    robot = A1(action_history=action_history,
+               limit_action_range=limit_action_range,
+               init_qpos=init_qpos)
     # robot.kd = 5
 
     if task_name == 'A1Run-v0':
@@ -54,10 +59,11 @@ def make_env(task_name: str,
                    randomize_ground=randomize_ground)
     else:
         raise NotImplemented
-
     env = composer.Environment(task, strip_singleton_obs_buffer_dim=True)
 
     env = DMCGYM(env)
+    # env = ClipAction(env, robot.action_qpos_mins, robot.action_qpos_maxs)
+    # env = RescaleActionAsymmetric(env, -1.0, 1.0, robot.joint_qpos_init)
     env = FlattenObservation(env)
 
     return env
@@ -70,10 +76,14 @@ def make_mujoco_env(env_name: str,
                     control_frequency: int,
                     clip_actions: bool = True,
                     action_filter_high_cut: Optional[float] = -1,
-                    action_history: int = 1) -> gym.Env:
+                    action_history: int = 1,
+                    limit_action_range: float = 1.,
+                    init_qpos: np.ndarray = np.asarray([0.05, 0.7, -1.4] * 4)) -> gym.Env:
     env = make_env(env_name,
                    control_frequency=control_frequency,
-                   action_history=action_history)
+                   action_history=action_history,
+                   limit_action_range=limit_action_range,
+                   init_qpos = init_qpos)
 
     env = gym.wrappers.TimeLimit(env, 400)
 
@@ -82,15 +92,16 @@ def make_mujoco_env(env_name: str,
     if action_filter_high_cut is not None:
         env = ActionFilterWrapper(env, highcut=action_filter_high_cut)
 
-    if clip_actions:
-        ACTION_OFFSET = np.asarray([0.2, 0.4, 0.4] * 4)
-        INIT_QPOS = sim.robots.a1.A1._INIT_QPOS
-        if env.action_space.shape[0] == 12:
-            env = ClipAction(env, INIT_QPOS - ACTION_OFFSET,
-                             INIT_QPOS + ACTION_OFFSET)
-        else:
-            env = ClipAction(
-                env, np.concatenate([INIT_QPOS - ACTION_OFFSET, [-1.0]]),
-                np.concatenate([INIT_QPOS + ACTION_OFFSET, [1.0]]))
+
+    # if clip_actions:
+    #     ACTION_OFFSET = np.asarray([0.2, 0.4, 0.4] * 4)
+    #     INIT_QPOS = sim.robots.a1.A1._INIT_QPOS
+    #     if env.action_space.shape[0] == 12:
+    #         env = ClipAction(env, INIT_QPOS - ACTION_OFFSET,
+    #                          INIT_QPOS + ACTION_OFFSET)
+    #     else:
+    #         env = ClipAction(
+    #             env, np.concatenate([INIT_QPOS - ACTION_OFFSET, [-1.0]]),
+    #             np.concatenate([INIT_QPOS + ACTION_OFFSET, [1.0]]))
 
     return env
