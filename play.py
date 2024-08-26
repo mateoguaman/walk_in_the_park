@@ -19,17 +19,17 @@ from rl.wrappers import wrap_gym
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('env_name', 'A1Run-v0', 'Environment name.')
-flags.DEFINE_string('save_dir', './tmp/', 'Tensorboard logging dir.')
+# flags.DEFINE_string('save_dir', './tmp/', 'Tensorboard logging dir.')
 flags.DEFINE_integer('seed', 42, 'Random seed.')
-flags.DEFINE_integer('eval_episodes', 1,
-                     'Number of episodes used for evaluation.')
+# flags.DEFINE_integer('eval_episodes', 1,
+#                      'Number of episodes used for evaluation.')
 flags.DEFINE_integer('log_interval', 1000, 'Logging interval.')
 flags.DEFINE_integer('log_video_interval', 5000, 'Logging video interval.')
-flags.DEFINE_integer('eval_interval', 1000, 'Eval interval.')
-flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
+# flags.DEFINE_integer('eval_interval', 1000, 'Eval interval.')
+# flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
 flags.DEFINE_integer('max_steps', int(1e6), 'Number of training steps.')
-flags.DEFINE_integer('start_training', int(1e4),
-                     'Number of training steps to start training.')
+# flags.DEFINE_integer('start_training', int(1e4),
+#                      'Number of training steps to start training.')
 flags.DEFINE_boolean('tqdm', True, 'Use tqdm progress bar.')
 flags.DEFINE_boolean('wandb', True, 'Log wandb.')
 flags.DEFINE_boolean('save_video', False, 'Save videos during evaluation.')
@@ -37,10 +37,8 @@ flags.DEFINE_float('action_filter_high_cut', None, 'Action filter high cut.')
 flags.DEFINE_integer('action_history', 1, 'Action history.')
 flags.DEFINE_float('limit_action_range', 1., 'Limit action range in (0, 1]')
 flags.DEFINE_integer('control_frequency', 20, 'Control frequency.')
-flags.DEFINE_integer('utd_ratio', 1, 'Update to data ratio.')
+# flags.DEFINE_integer('utd_ratio', 1, 'Update to data ratio.')
 flags.DEFINE_boolean('real_robot', False, 'Use real robot.')
-flags.DEFINE_string('load_checkpoint', None, 'Checkpoint to load from which to continue fine-tuning.')
-flags.DEFINE_string('load_buffer', None, 'Buffer to load from which to continue fine-tuning.')
 config_flags.DEFINE_config_file(
     'config',
     'configs/sac_config.py',
@@ -94,50 +92,26 @@ def main(_):
     kwargs = dict(FLAGS.config)
     agent = SACLearner.create(FLAGS.seed, env.observation_space,
                               env.action_space, **kwargs)
-    
 
-    ## Checkpoints and buffers will always be saved to saved/checkpoints and saved/buffers
-    chkpt_dir = os.path.join(os.getcwd(), 'saved/checkpoints')
+    chkpt_dir = os.path.join(os.getcwd(), 'saved/checkpoints') #'saved/checkpoints'
     os.makedirs(chkpt_dir, exist_ok=True)
-    buffer_dir = os.path.join(os.getcwd(), 'saved/buffers') 
-    # last_checkpoint = checkpoints.latest_checkpoint(chkpt_dir)
-    # if last_checkpoint is None:
-    #     start_i = 0
-    #     replay_buffer = ReplayBuffer(env.observation_space, env.action_space,
-    #                                  FLAGS.max_steps)
-    #     replay_buffer.seed(FLAGS.seed)
-    # else:
-    #     start_i = int(last_checkpoint.split('_')[-1])
+    buffer_dir = os.path.join(os.getcwd(), 'saved/buffers') #'saved/buffers'
 
-    #     agent = checkpoints.restore_checkpoint(last_checkpoint, agent)
+    last_checkpoint = checkpoints.latest_checkpoint(chkpt_dir)
 
-    #     with open(os.path.join(buffer_dir, f'buffer_{start_i}'), 'rb') as f:
-    #         replay_buffer = pickle.load(f)
-
-
-    if FLAGS.load_checkpoint:
-        last_checkpoint = FLAGS.load_checkpoint
-        start_i = int(last_checkpoint.split('_')[-1])
-        agent = checkpoints.restore_checkpoint(last_checkpoint, agent)
-    else: 
-        last_checkpoint = checkpoints.latest_checkpoint(chkpt_dir)
-        if last_checkpoint is None:
-            start_i = 0
-        else:
-            start_i = int(last_checkpoint.split('_')[-1])
-            agent = checkpoints.restore_checkpoint(last_checkpoint, agent)
-
-    if FLAGS.load_buffer:
-        with open(FLAGS.load_buffer, 'rb') as f:
-            replay_buffer = pickle.load(f)
-    else:
-        if start_i == 0:
-            replay_buffer = ReplayBuffer(env.observation_space, env.action_space,
+    if last_checkpoint is None:
+        print("WARNING: No checkpoint loaded. Will execute random policy.")
+        start_i = 0
+        replay_buffer = ReplayBuffer(env.observation_space, env.action_space,
                                      FLAGS.max_steps)
-            replay_buffer.seed(FLAGS.seed)
-        else:
-            with open(os.path.join(buffer_dir, f'buffer_{start_i}'), 'rb') as f:
-                replay_buffer = pickle.load(f)
+        replay_buffer.seed(FLAGS.seed)
+    else:
+        start_i = int(last_checkpoint.split('_')[-1])
+
+        agent = checkpoints.restore_checkpoint(last_checkpoint, agent)
+
+        with open(os.path.join(buffer_dir, f'buffer_{start_i}'), 'rb') as f:
+            replay_buffer = pickle.load(f)
 
     observation, done = env.reset(), False
     if not FLAGS.real_robot:
@@ -147,10 +121,11 @@ def main(_):
     for i in tqdm.tqdm(range(start_i, FLAGS.max_steps),
                        smoothing=0.1,
                        disable=not FLAGS.tqdm):
-        if i < FLAGS.start_training:
-            action = env.action_space.sample()
-        else:
-            action, agent = agent.sample_actions(observation)
+        # if i < FLAGS.start_training:
+        #     action = env.action_space.sample()
+        # else:
+        #     action, agent = agent.sample_actions(observation)
+        action, agent = agent.sample_actions(observation)
         next_observation, reward, done, info = env.step(action)
         if not FLAGS.real_robot:
             episode_frames.append(env.render())
@@ -184,43 +159,40 @@ def main(_):
             if not FLAGS.real_robot:
                 episode_frames = [env.render()]
 
-        if i >= FLAGS.start_training:
-            batch = replay_buffer.sample(FLAGS.batch_size * FLAGS.utd_ratio)
-            agent, update_info = agent.update(batch, FLAGS.utd_ratio)
+        # if i >= FLAGS.start_training:
+        #     batch = replay_buffer.sample(FLAGS.batch_size * FLAGS.utd_ratio)
+        #     agent, update_info = agent.update(batch, FLAGS.utd_ratio)
 
-            if i % FLAGS.log_interval == 0:
-                for k, v in update_info.items():
-                    wandb.log({f'training/{k}': v}, step=i)
+        #     if i % FLAGS.log_interval == 0:
+        #         for k, v in update_info.items():
+        #             wandb.log({f'training/{k}': v}, step=i)
 
-        if i % FLAGS.eval_interval == 0:
-            if not FLAGS.real_robot:
-                eval_info = evaluate(agent,
-                                     eval_env,
-                                     num_episodes=FLAGS.eval_episodes)
-                for k, v in eval_info.items():
-                    if k == "frames" and not FLAGS.real_robot:
-                        eval_episode_frames = np.stack(v, axis=0).transpose(0, 3, 1, 2)
-                        wandb.log({"evaluation/video": wandb.Video(eval_episode_frames, fps = FLAGS.control_frequency)}, step=i)
-                    else:
-                        wandb.log({f'evaluation/{k}': v}, step=i)
+        # if i % FLAGS.eval_interval == 0:
+        #     if not FLAGS.real_robot:
+        #         eval_info = evaluate(agent,
+        #                              eval_env,
+        #                              num_episodes=FLAGS.eval_episodes)
+        #         for k, v in eval_info.items():
+        #             if k == "frames" and not FLAGS.real_robot:
+        #                 eval_episode_frames = np.stack(v, axis=0).transpose(0, 3, 1, 2)
+        #                 wandb.log({"evaluation/video": wandb.Video(eval_episode_frames, fps = FLAGS.control_frequency)}, step=i)
+        #             else:
+        #                 wandb.log({f'evaluation/{k}': v}, step=i)
 
-            checkpoints.save_checkpoint(chkpt_dir,
-                                        agent,
-                                        step=i + 1,
-                                        keep=20,
-                                        overwrite=True)
+        #     checkpoints.save_checkpoint(chkpt_dir,
+        #                                 agent,
+        #                                 step=i + 1,
+        #                                 keep=20,
+        #                                 overwrite=True)
 
-            try:
-                shutil.rmtree(buffer_dir)
-            except:
-                pass
+        #     try:
+        #         shutil.rmtree(buffer_dir)
+        #     except:
+        #         pass
 
-            os.makedirs(buffer_dir, exist_ok=True)
-            with open(os.path.join(buffer_dir, f'buffer_{i+1}'), 'wb') as f:
-                pickle.dump(replay_buffer, f)
-    if len(episode_frames) > 0 and not FLAGS.real_robot:
-        episode_frames = np.stack(episode_frames, axis=0).transpose(0, 3, 1, 2)
-        wandb.log({"training/video": wandb.Video(episode_frames, fps = FLAGS.control_frequency)}, step=i)
+        #     os.makedirs(buffer_dir, exist_ok=True)
+        #     with open(os.path.join(buffer_dir, f'buffer_{i+1}'), 'wb') as f:
+        #         pickle.dump(replay_buffer, f)
     wandb.finish()
 
 

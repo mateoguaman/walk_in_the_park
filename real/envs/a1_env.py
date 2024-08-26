@@ -41,7 +41,7 @@ class A1Real(gym.Env):
         logging.info(
             "WARNING: this code executes low-level control on the robot.")
         input("Press enter to continue...")
-        self.zero_action = zero_action
+        self.zero_action = zero_action.copy()
         # self.action_offset = action_offset
         self.limit_action_range = limit_action_range
 
@@ -76,7 +76,7 @@ class A1Real(gym.Env):
 
     def _reset_var(self):
         self.prev_action = np.zeros_like(self.action_space.low)
-        self.prev_qpos = self.zero_action
+        self.prev_qpos = self.zero_action.copy()
         self._last_timestamp = time.time()
         self._prev_pose = None
 
