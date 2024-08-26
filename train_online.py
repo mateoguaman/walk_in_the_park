@@ -62,7 +62,8 @@ def main(_):
             FLAGS.env_name,
             control_frequency=FLAGS.control_frequency,
             action_filter_high_cut=FLAGS.action_filter_high_cut,
-            action_history=FLAGS.action_history)
+            action_history=FLAGS.action_history,
+            clip_actions=False)
 
     env = wrap_gym(env, rescale_actions=True)
     env = gym.wrappers.RecordEpisodeStatistics(env, deque_size=1)
@@ -77,7 +78,8 @@ def main(_):
             FLAGS.env_name,
             control_frequency=FLAGS.control_frequency,
             action_filter_high_cut=FLAGS.action_filter_high_cut,
-            action_history=FLAGS.action_history)
+            action_history=FLAGS.action_history,
+            clip_actions=False)
         eval_env = wrap_gym(eval_env, rescale_actions=True)
         eval_env = gym.wrappers.RecordVideo(
             eval_env,
@@ -108,7 +110,9 @@ def main(_):
         with open(os.path.join(buffer_dir, f'buffer_{start_i}'), 'rb') as f:
             replay_buffer = pickle.load(f)
 
+    training_frames = []
     observation, done = env.reset(), False
+    training_frames.append(env.render())
     for i in tqdm.tqdm(range(start_i, FLAGS.max_steps),
                        smoothing=0.1,
                        disable=not FLAGS.tqdm):
@@ -117,6 +121,7 @@ def main(_):
         else:
             action, agent = agent.sample_actions(observation)
         next_observation, reward, done, info = env.step(action)
+        training_frames.append(env.render())
 
         if not done or 'TimeLimit.truncated' in info:
             mask = 1.0
@@ -137,6 +142,9 @@ def main(_):
             for k, v in info['episode'].items():
                 decode = {'r': 'return', 'l': 'length', 't': 'time'}
                 wandb.log({f'training/{decode[k]}': v}, step=i)
+            ep_frames_stacked = np.stack(training_frames, axis=0)
+            wandb.log({"training/video": wandb.Video(ep_frames_stacked, fps=10)}, step=i)
+            training_frames = []
 
         if i >= FLAGS.start_training:
             batch = replay_buffer.sample(FLAGS.batch_size * FLAGS.utd_ratio)
