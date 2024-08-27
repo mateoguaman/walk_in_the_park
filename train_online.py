@@ -41,6 +41,11 @@ flags.DEFINE_integer('utd_ratio', 1, 'Update to data ratio.')
 flags.DEFINE_boolean('real_robot', False, 'Use real robot.')
 flags.DEFINE_string('load_checkpoint', None, 'Checkpoint to load from which to continue fine-tuning.')
 flags.DEFINE_string('load_buffer', None, 'Buffer to load from which to continue fine-tuning.')
+flags.DEFINE_string('arena_type', 'hfield', 'Arena type. Options are floor, hfield and bowl.')
+flags.DEFINE_float('slope', 0.0, 'Slope angle in degrees.')
+flags.DEFINE_float('friction', 1.0, 'Friction coefficient (first parameter).')
+
+
 config_flags.DEFINE_config_file(
     'config',
     'configs/sac_config.py',
@@ -66,7 +71,10 @@ def main(_):
             action_filter_high_cut=FLAGS.action_filter_high_cut,
             action_history=FLAGS.action_history,
             limit_action_range=FLAGS.limit_action_range,
-            init_qpos=init_qpos)
+            init_qpos=init_qpos,
+            arena_type=FLAGS.arena_type,
+            slope=FLAGS.slope,
+            friction=FLAGS.friction)
 
     env = wrap_gym(env, rescale_actions=True, init_qpos=init_qpos, limit_action_range=FLAGS.limit_action_range)
     env = gym.wrappers.RecordEpisodeStatistics(env, deque_size=1)
@@ -83,7 +91,10 @@ def main(_):
             action_filter_high_cut=FLAGS.action_filter_high_cut,
             action_history=FLAGS.action_history,
             limit_action_range=FLAGS.limit_action_range,
-            init_qpos=init_qpos)
+            init_qpos=init_qpos,
+            arena_type=FLAGS.arena_type,
+            slope=FLAGS.slope,
+            friction=FLAGS.friction)
         eval_env = wrap_gym(eval_env, rescale_actions=True, init_qpos=init_qpos, limit_action_range=FLAGS.limit_action_range)
         eval_env = gym.wrappers.RecordVideo(
             eval_env,
@@ -97,9 +108,9 @@ def main(_):
     
 
     ## Checkpoints and buffers will always be saved to saved/checkpoints and saved/buffers
-    chkpt_dir = os.path.join(os.getcwd(), 'saved/checkpoints')
+    chkpt_dir = os.path.join(os.getcwd(), FLAGS.save_dir, 'checkpoints')
     os.makedirs(chkpt_dir, exist_ok=True)
-    buffer_dir = os.path.join(os.getcwd(), 'saved/buffers') 
+    buffer_dir = os.path.join(os.getcwd(), FLAGS.save_dir, 'buffers')  
     # last_checkpoint = checkpoints.latest_checkpoint(chkpt_dir)
     # if last_checkpoint is None:
     #     start_i = 0

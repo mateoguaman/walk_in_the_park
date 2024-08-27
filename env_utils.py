@@ -47,7 +47,10 @@ def make_env(task_name: str,
              randomize_ground: bool = True,
              action_history: int = 1,
              limit_action_range: float = 1.0,
-             init_qpos: np.ndarray = np.asarray([0.05, 0.7, -1.4] * 4)):
+             init_qpos: np.ndarray = np.asarray([0.05, 0.7, -1.4] * 4),
+             arena_type: str = 'floor',
+             slope: float = 0.0,
+             friction: float = 1.0):
     robot = A1(action_history=action_history,
                limit_action_range=limit_action_range,
                init_qpos=init_qpos)
@@ -56,7 +59,10 @@ def make_env(task_name: str,
     if task_name == 'A1Run-v0':
         task = Run(robot,
                    control_timestep=round(1.0 / control_frequency, 3),
-                   randomize_ground=randomize_ground)
+                   randomize_ground=randomize_ground,
+                   arena_type=arena_type,
+                   slope=slope,
+                   friction=friction)
     else:
         raise NotImplemented
     env = composer.Environment(task, strip_singleton_obs_buffer_dim=True)
@@ -78,12 +84,18 @@ def make_mujoco_env(env_name: str,
                     action_filter_high_cut: Optional[float] = -1,
                     action_history: int = 1,
                     limit_action_range: float = 1.,
-                    init_qpos: np.ndarray = np.asarray([0.05, 0.7, -1.4] * 4)) -> gym.Env:
+                    init_qpos: np.ndarray = np.asarray([0.05, 0.7, -1.4] * 4),
+                    arena_type: str = 'floor',
+                    slope: float = 0.0,
+                    friction: float = 1.0) -> gym.Env:
     env = make_env(env_name,
                    control_frequency=control_frequency,
                    action_history=action_history,
                    limit_action_range=limit_action_range,
-                   init_qpos = init_qpos)
+                   init_qpos=init_qpos,
+                   arena_type=arena_type,
+                   slope=slope,
+                   friction=friction)
 
     env = gym.wrappers.TimeLimit(env, 400)
 

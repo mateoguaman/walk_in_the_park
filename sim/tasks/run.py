@@ -37,18 +37,26 @@ class Run(composer.Task):
                  control_timestep: float = DEFAULT_CONTROL_TIMESTEP,
                  floor_friction: Tuple[float] = (1, 0.005, 0.0001),
                  randomize_ground: bool = True,
-                 add_velocity_to_observations: bool = True):
+                 add_velocity_to_observations: bool = True,
+                 arena_type: str = 'floor',
+                 slope: float = 0.0,
+                 friction: float = 1.0):
 
         self.floor_friction = floor_friction
-        if randomize_ground:
-            self._floor = HField(size=(10, 10))
+        if arena_type == 'floor':
+            self._floor = arenas.Floor(size=(10, 10))
+        elif arena_type == 'hfield':
+            self._floor = HField(size=(10, 10), randomize=randomize_ground)
             self._floor.mjcf_model.size.nconmax = 400
             self._floor.mjcf_model.size.njmax = 2000
+        elif arena_type == 'bowl':
+            from sim.arenas import Bowl
+            self._floor = Bowl(size=(10, 10), slope=slope)
         else:
-            self._floor = arenas.Floor(size=(10, 10))
+            raise ValueError(f"Unknown arena type: {arena_type}")
 
         for geom in self._floor.mjcf_model.find_all('geom'):
-            geom.friction = floor_friction
+            geom.friction = (friction,) + self.floor_friction[1:]
 
         self._robot = robot
         self._floor.add_free_entity(self._robot)
